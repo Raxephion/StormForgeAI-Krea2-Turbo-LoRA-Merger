@@ -21,6 +21,7 @@ import torch
 from lora_merge import (
     DTYPE_MAP,
     check_compatibility,
+    load_metadata,
     load_state_dict,
     merge_lora_file,
     save_merged,
@@ -205,10 +206,13 @@ def on_merge(
 
     try:
         base_state = load_state_dict(base_path, device=device)
+        base_metadata = load_metadata(base_path)
     except Exception as e:
         return "❌ Failed to load base model:\n" + "".join(traceback.format_exception(e)), None
 
     log_lines.append(f"Base model loaded: {len(base_state)} tensors.")
+    if base_metadata:
+        log_lines.append(f"Base model metadata header found ({len(base_metadata)} entries) — will be preserved in output.")
 
     total_matched, total_unmatched, total_shape = 0, 0, 0
     n = len(lora_files)
@@ -240,7 +244,7 @@ def on_merge(
     progress(0.95, desc="Saving merged model")
     log_lines.append(f"\nSaving merged model to {output_path} ...")
     try:
-        save_merged(base_state, output_path, out_dtype)
+        save_merged(base_state, output_path, out_dtype, metadata=base_metadata)
     except Exception as e:
         return "\n".join(log_lines) + "\n❌ Error saving file:\n" + "".join(traceback.format_exception(e)), None
 
