@@ -62,6 +62,18 @@ def load_state_dict(path: str, device: str = "cpu") -> dict[str, torch.Tensor]:
     return state
 
 
+def load_metadata(path: str) -> dict[str, str] | None:
+    """
+    Load the __metadata__ header of a safetensors file. Some checkpoints
+    (e.g. scaled-fp8 quantized ones) rely on a header like
+    '_quantization_metadata' for the inference loader to know how to treat
+    the weights -- this must be carried through to a merged output file or
+    the merged model can silently load incorrectly.
+    """
+    with safe_open(path, framework="pt", device="cpu") as f:
+        return f.metadata()
+
+
 def peek_keys(path: str, limit: int = 20) -> list[str]:
     with safe_open(path, framework="pt", device="cpu") as f:
         keys = list(f.keys())
@@ -388,9 +400,19 @@ DTYPE_MAP = {
 }
 
 
-def save_merged(base_state: dict[str, torch.Tensor], output_path: str, out_dtype: torch.dtype | None) -> None:
+def save_merged(
+    base_state: dict[str, torch.Tensor],
+    output_path: str,
+    out_dtype: torch.dtype | None,
+    metadata: dict[str, str] | None = None,
+) -> None:
     if out_dtype is not None:
-        base_state = {k: v.to(out_dtype) for k, v in base_state.items()}
+        # Never downcast already-quantized (fp8) tensors -- only convert
+        # regular floating point weights to the requested output precision.
+        base_state = {
+            k: (v.to(out_dtype) if v.dtype not in (torch.float8_e4m3fn, torch.float8_e5m2) else v)
+            for k, v in base_state.items()
+        }
     # safetensors requires contiguous tensors
     base_state = {k: v.contiguous() for k, v in base_state.items()}
-    save_file(base_state, output_path)
+    save_file(base_state, output_path, metadata=metadata)
