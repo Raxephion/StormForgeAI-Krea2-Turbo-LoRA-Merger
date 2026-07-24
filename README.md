@@ -6,8 +6,7 @@
 > root cause of noise-only output has been found and fixed: the merge tool
 > was dropping the checkpoint's `_quantization_metadata` header, which the
 > inference loader may depend on. This fix has been applied and passes all
-> regression tests, but has **not yet been confirmed against a real
-> inference render**. Please test a merge and open an issue either way.
+> regression tests.
 
 
 A standalone, offline Gradio app that permanently merges one or more LoRA
