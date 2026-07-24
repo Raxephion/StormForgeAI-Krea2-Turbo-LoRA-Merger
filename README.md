@@ -1,11 +1,13 @@
 # Krea 2 Turbo LoRA Merger
 
-> ⚠️ **Known issue — do not use merged output yet.** Key-matching against
-> fp8-scaled Krea 2 checkpoints is now verified correct (232/232 layers
-> matched), but merged models currently produce pure noise output at
-> inference. This points to the fp8 dequantize/requantize math, not the key
-> matching. Actively being debugged — please hold off relying on merged
-> files until this note is removed. Follow/open an issue for updates.
+> ⚠️ **Known issue — verify before relying on merged output.** Key-matching
+> against fp8-scaled Krea 2 checkpoints is confirmed correct (232/232),
+> and the fp8 dequantize/requantize math is confirmed correct. A likely
+> root cause of noise-only output has been found and fixed: the merge tool
+> was dropping the checkpoint's `_quantization_metadata` header, which the
+> inference loader may depend on. This fix has been applied and passes all
+> regression tests, but has **not yet been confirmed against a real
+> inference render**. Please test a merge and open an issue either way.
 
 
 A standalone, offline Gradio app that permanently merges one or more LoRA
