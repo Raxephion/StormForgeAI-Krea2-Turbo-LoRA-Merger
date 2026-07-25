@@ -7,6 +7,11 @@
 > combination, please open an issue with a `check_keys_full.py` dump of both
 > files.
 
+> **Coming soon.**
+> -checkpoint merging
+> -integration with the main webUI
+> -more
+
 
 A standalone, offline Gradio app that permanently merges one or more LoRA
 files into a base diffusion model checkpoint (built for Krea 2 Turbo, but
