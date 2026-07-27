@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set BASE_PATH=C:\ComfyFAST\ComfyUI_windows_portable\ComfyUI\models\diffusion_models\krea2_turbo_base_fp8_scaled.safetensors
+set BASE_PATH=
 
 call .venv\Scripts\activate.bat
 
