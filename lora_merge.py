@@ -271,8 +271,15 @@ def match_layers(
         if base_key is None:
             translated = diffusers_to_native(base_name)
             if translated is not None:
-                candidate2 = translated + ".weight"
-                base_key = candidate2 if candidate2 in base_state else None
+                # Try both the bare native name (split checkpoints) and the
+                # "model.diffusion_model." prefixed form used by all-in-one
+                # checkpoints that bundle the diffusion model + VAE + text
+                # encoder(s) into a single file.
+                for candidate_prefix in ("", "model.diffusion_model."):
+                    candidate2 = candidate_prefix + translated + ".weight"
+                    if candidate2 in base_state:
+                        base_key = candidate2
+                        break
 
         if base_key is None:
             norm = normalize_key(base_name)
