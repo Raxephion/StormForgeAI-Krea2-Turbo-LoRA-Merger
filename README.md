@@ -1,16 +1,12 @@
 # Krea 2 Turbo LoRA Merger
 
-> ✅ **Confirmed working.** Key-matching against fp8-scaled Krea 2 checkpoints,
-> fp8 dequantize/requantize math, and metadata-header preservation have all
-> been fixed and verified — including a real inference render producing a
-> correct (non-noise) image. If you hit issues on a different checkpoint/LoRA
-> combination, please open an issue with a `check_keys_full.py` dump of both
-> files.
-
-> **Coming soon.**
-> -checkpoint merging
-> -integration with the main webUI
-> -more
+> ✅ **Confirmed working**, including on both split (`diffusion_models/`)
+> and all-in-one (`checkpoints/`, bundling diffusion model + VAE + text
+> encoder) Krea 2 checkpoints. Key-matching, fp8 dequantize/requantize math,
+> `model.diffusion_model.` prefix handling, and metadata-header preservation
+> have all been fixed and verified against real files and real renders. If
+> you hit issues on a different checkpoint/LoRA combination, please open an
+> issue with a `check_keys_full.py` dump of both files.
 
 
 A standalone, offline Gradio app that permanently merges one or more LoRA
