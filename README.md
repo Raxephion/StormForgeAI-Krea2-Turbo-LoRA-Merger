@@ -12,7 +12,7 @@ While it works perfectly alongside ComfyUI, **ComfyUI is not required**.
 
 ---
 
-> **Why not just use two merge nodes in ComfyUI?**
+> **Why not just use three nodes in ComfyUI?**
 >
 > Because not everyone wants to use ComfyUI.
 >
