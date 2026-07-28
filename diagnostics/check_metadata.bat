@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set BASE_PATH=
+set BASE_PATH=SET MODEL PATH HERE
 
 call .venv\Scripts\activate.bat
 

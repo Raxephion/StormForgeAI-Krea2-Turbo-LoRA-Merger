@@ -5,8 +5,8 @@ REM ============================================================
 REM EDIT THESE TWO LINES ONLY if the paths are wrong, then save
 REM and double-click this file.
 REM ============================================================
-set BASE_PATH=
-set LORA_PATH=
+set BASE_PATH=SET MODEL PATH HERE
+set LORA_PATH=SET MODEL PATH HERE
 
 call .venv\Scripts\activate.bat
 
