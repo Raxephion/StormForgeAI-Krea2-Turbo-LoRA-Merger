@@ -100,3 +100,13 @@ base file. Any layer it can't confidently match is reported, not guessed.
   as a rough guide.
 - Always run "Check compatibility" first on a new LoRA/base combination
   before trusting the merged output.
+
+---
+
+## Roadmap
+
+This project is under active development.
+
+Planned additions include more advanced merge algorithms, additional checkpoint
+utilities, model inspection tools, and workflow features aimed at making model
+engineering accessible without requiring ComfyUI.
