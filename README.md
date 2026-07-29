@@ -1,209 +1,102 @@
 # Krea 2 Turbo LoRA Merger
 
-A standalone desktop application for permanently merging one or more LoRAs into
-Krea 2 Turbo checkpoints.
+> ✅ **Confirmed working**, including split checkpoints, all-in-one
+> checkpoints (diffusion model + VAE + text encoder bundled), standard LoRA
+> adapters, and LyCORIS LoKr adapters (Kronecker-product format). All fixed
+> and verified against real files and real renders. If you hit issues on a
+> different checkpoint/LoRA combination, please open an issue with a
+> `check_keys_full.py` dump of both files.
 
-Unlike ComfyUI, this application is built for people who simply want to merge
-models without learning node graphs, building workflows, or installing an entire
-inference pipeline. Load your model, load your LoRAs, choose the merge settings,
-and save.
 
-While it works perfectly alongside ComfyUI, **ComfyUI is not required**.
+A standalone, offline Gradio app that permanently merges one or more LoRA
+files into a base diffusion model checkpoint (built for Krea 2 Turbo, but
+works with any safetensors checkpoint using compatible LoRA naming).
 
----
-
-> **Why not just use three nodes in ComfyUI?**
->
-> Because not everyone wants to use ComfyUI.
->
-> This project exists for exactly the same reason as the Krea 2 WebUI project:
-> to provide a clean, dedicated application for a specific task.
->
-> It already supports merging LoRAs into both split Krea 2 diffusion models and
-> all-in-one checkpoints, and over time it will grow far beyond a simple
-> one-click LoRA merge utility with additional model engineering features.
-
----
-
-## Features
-
-- Merge one or multiple LoRAs into a base checkpoint
-- Supports both **split Krea 2 models** (`diffusion_models/`)
-- Supports **all-in-one checkpoints** (`checkpoints/`)
-- Automatic key matching
-- Supports Kohya and Diffusers/PEFT LoRA formats
-- FP8-aware merging
-- Preserves metadata headers
-- Adjustable merge strength for every loaded LoRA
-- Compatibility checker before merging
-- Runs completely offline
-- No ComfyUI installation required
-
----
-
-> ✅ **Confirmed working** on both split (`diffusion_models/`) and
-> all-in-one (`checkpoints/`) Krea 2 checkpoints.
->
-> FP8 dequantization/requantization, key matching,
-> `model.diffusion_model.` prefix handling and metadata preservation have all
-> been verified against real-world checkpoints and renders.
->
-> If you encounter an unsupported checkpoint or LoRA combination, please open
-> an issue together with the output of `check_keys_full.py`.
-
----
+No internet access is required to run it — everything happens locally on
+your machine.
 
 ## Requirements
 
-- Windows
-- Python 3.10 or 3.11 installed and available on PATH
-- Base checkpoint (`.safetensors`)
-- One or more LoRA files (`.safetensors`)
+- Windows, with Python 3.10 or 3.11 installed and on PATH
+  (https://www.python.org/downloads/ — check "Add python.exe to PATH")
+- Your base checkpoint and LoRA file(s) already downloaded locally as
+  `.safetensors` files
 
----
+## Install
 
-## Installation
+Double-click `install.bat` (or run it from a terminal). It will:
 
-Run:
+1. Create a local virtual environment in `.venv`
+2. Install Gradio, PyTorch (CPU version), and safetensors
+
+If you have an NVIDIA GPU and want faster merging, after `install.bat`
+finishes, run:
 
 ```
-install.bat
-```
-
-The installer automatically:
-
-1. Creates a local virtual environment
-2. Installs Gradio
-3. Installs PyTorch (CPU build)
-4. Installs safetensors and all required dependencies
-
-### Optional GPU acceleration
-
-If you have an NVIDIA GPU you can install the CUDA build of PyTorch afterwards:
-
-```bat
 .venv\Scripts\activate
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 ```
 
-Replace `cu121` with the version matching your CUDA installation.
+(swap `cu121` for the CUDA build matching your GPU driver — see
+https://pytorch.org/get-started/locally/)
 
----
+## Run
 
-## Running
+Double-click `run.bat`. This opens the app in your browser at
+`http://127.0.0.1:7860`.
 
-Simply run
+## Using the app
 
-```
-run.bat
-```
+1. **Load files** — upload your base model `.safetensors` file, and one or
+   more LoRA `.safetensors` files.
+2. **LoRA weights** — a weight slider appears for each LoRA you loaded.
+   `1.0` applies the LoRA at its trained strength; lower values apply it
+   more subtly, negative values invert its effect.
+3. **Settings**:
+   - **Compute precision** — precision used for the merge math itself.
+     `fp32` is safest/most accurate; `fp16`/`bf16` are faster and use less
+     RAM but can lose a little precision.
+   - **Output precision** — precision of the saved file. `keep original`
+     preserves whatever precision the base checkpoint was in.
+   - **Device** — `cpu` works everywhere; `cuda` is faster if you have a
+     working GPU build of PyTorch installed.
+   - **Output folder / filename** — where the merged `.safetensors` file
+     is written.
+4. **Check compatibility (dry run)** — before merging, run this to see how
+   many LoRA layers actually match your base model's weight names. LoRAs
+   trained for a different architecture, or exported in an unexpected
+   format, will show up here as "unmatched" rather than silently failing.
+5. **Merge & Save** — performs the actual merge and writes the output file.
+   The log shows how many layers were merged, skipped, or mismatched.
 
-The application opens in your browser:
+## How it works
 
-```
-http://127.0.0.1:7860
-```
-
----
-
-## Usage
-
-### 1. Load files
-
-Select:
-
-- Base checkpoint
-- One or more LoRA files
-
-### 2. Configure LoRAs
-
-Each loaded LoRA receives its own weight slider.
-
-- `1.0` = original trained strength
-- `< 1.0` = softer effect
-- `> 1.0` = stronger effect
-- negative values invert the learned changes
-
-### 3. Configure merge
-
-Choose:
-
-- Compute precision
-- Output precision
-- CPU or CUDA
-- Output location
-- Output filename
-
-### 4. Check compatibility
-
-The compatibility checker performs a dry run and reports:
-
-- matched layers
-- unmatched layers
-- skipped layers
-
-before modifying anything.
-
-This makes it easy to spot incompatible LoRAs before committing to a merge.
-
-### 5. Merge
-
-Click **Merge & Save**.
-
-The application permanently bakes every compatible LoRA into the checkpoint and
-writes a new standalone `.safetensors` model.
-
----
-
-## How LoRA merging works
-
-A LoRA stores small low-rank matrices describing changes to selected layers
-instead of storing an entire model.
-
-For each matching layer the merger computes:
+LoRA weight files store, for a subset of layers, a low-rank pair of
+matrices (`down`/`up`, sometimes named `lora_A`/`lora_B`) plus an optional
+`alpha` scaling value. Merging bakes each LoRA in by computing, for every
+matched layer:
 
 ```
-new_weight = base_weight +
-             (up @ down) *
-             (alpha / rank) *
-             user_strength
+new_weight = base_weight + (up @ down) * (alpha / rank) * your_weight_slider
 ```
 
-The resulting tensors replace the originals and are written into a completely
-new checkpoint.
+This is applied directly to the base checkpoint's tensors and the result
+is saved as a new, standalone `.safetensors` file — no LoRA loader needed
+at inference time.
 
-The output model no longer requires external LoRAs during inference.
+The app recognizes both common LoRA naming conventions (Kohya/ComfyUI-style
+`lora_down`/`lora_up`, and Diffusers/PEFT-style `lora_A`/`lora_B`), and
+falls back to fuzzy key matching when prefixes differ between the LoRA and
+base file. Any layer it can't confidently match is reported, not guessed.
 
----
+## Notes / limitations
 
-## Supported formats
-
-The merger currently supports:
-
-- Kohya LoRAs
-- ComfyUI LoRAs
-- Diffusers / PEFT LoRAs
-
-Automatic key matching handles common naming differences between checkpoints and
-LoRAs. Layers that cannot be matched are reported rather than guessed.
-
----
-
-## Notes
-
-- Designed primarily for transformer-based diffusion models such as Krea 2
-- Supports standard linear-layer LoRAs
-- Convolutional LoRAs are currently not supported
-- The base checkpoint is loaded into RAM (or VRAM when using CUDA), so ensure
-  sufficient available memory
-- Always run **Check Compatibility** when testing an unfamiliar LoRA
-
----
-
-## Roadmap
-
-This project is under active development.
-
-Planned additions include more advanced merge algorithms, additional checkpoint
-utilities, model inspection tools, and workflow features aimed at making model
-engineering accessible without requiring ComfyUI.
+- This performs a **linear-layer LoRA merge**. It assumes standard
+  `(out_features, in_features)` weight/LoRA shapes, which covers Krea 2's
+  transformer architecture (and most modern DiT/UNet models). It is not
+  designed for convolutional LoRAs.
+- Merging loads the full base model into memory (RAM, or VRAM if using
+  `cuda`). Make sure you have enough — check your checkpoint's file size
+  as a rough guide.
+- Always run "Check compatibility" first on a new LoRA/base combination
+  before trusting the merged output.
