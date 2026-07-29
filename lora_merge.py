@@ -42,6 +42,21 @@ class LoraLayer:
 
 
 @dataclass
+class LokrLayer:
+    """
+    A single matched LyCORIS LoKr pair for one base weight. The weight
+    update is delta = kron(w1, w2) -- confirmed empirically (see
+    check_lokr_scale.py) that alpha is NOT applied as alpha/rank for this
+    format; some trainers store a huge sentinel alpha value that is not
+    meant to be divided into the delta. The Kronecker product is already
+    correctly scaled as stored.
+    """
+    base_key: str
+    w1: torch.Tensor
+    w2: torch.Tensor
+
+
+@dataclass
 class MergeReport:
     lora_file: str
     matched: list[str] = field(default_factory=list)
@@ -149,6 +164,10 @@ def extract_lora_pairs(lora_state: dict[str, torch.Tensor]) -> dict[str, dict]:
             base_name, role = key[: -len(".lora_B.default.weight")], "up"
         elif key.endswith(".alpha"):
             base_name, role = key[: -len(".alpha")], "alpha"
+        elif key.endswith(".lokr_w1"):
+            base_name, role = key[: -len(".lokr_w1")], "lokr_w1"
+        elif key.endswith(".lokr_w2"):
+            base_name, role = key[: -len(".lokr_w2")], "lokr_w2"
         else:
             continue  # not a LoRA weight we recognize (skip metadata etc.)
 
@@ -251,57 +270,75 @@ def build_base_lookup(base_state: dict[str, torch.Tensor]) -> dict[str, str]:
     return lookup
 
 
+def _resolve_base_key(base_name: str, base_state: dict[str, torch.Tensor], base_lookup: dict[str, str]) -> str | None:
+    """Shared base-key resolution used by both LoRA and LoKr matching."""
+    candidate = base_name + ".weight"
+    if candidate in base_state:
+        return candidate
+
+    translated = diffusers_to_native(base_name)
+    if translated is not None:
+        # Try both the bare native name (split checkpoints) and the
+        # "model.diffusion_model." prefixed form used by all-in-one
+        # checkpoints that bundle the diffusion model + VAE + text
+        # encoder(s) into a single file.
+        for candidate_prefix in ("", "model.diffusion_model."):
+            candidate2 = candidate_prefix + translated + ".weight"
+            if candidate2 in base_state:
+                return candidate2
+
+    norm = normalize_key(base_name)
+    return base_lookup.get(norm)
+
+
 def match_layers(
     lora_pairs: dict[str, dict],
     base_state: dict[str, torch.Tensor],
     base_lookup: dict[str, str],
-) -> tuple[list[LoraLayer], list[str], list[str]]:
-    matched_layers: list[LoraLayer] = []
+) -> tuple[list[LoraLayer | LokrLayer], list[str], list[str]]:
+    matched_layers: list[LoraLayer | LokrLayer] = []
     unmatched: list[str] = []
     shape_mismatches: list[str] = []
 
     for base_name, parts in lora_pairs.items():
-        if "down" not in parts or "up" not in parts:
+        is_lokr = "lokr_w1" in parts and "lokr_w2" in parts
+        is_lora = "down" in parts and "up" in parts
+
+        if not is_lokr and not is_lora:
             unmatched.append(base_name + " (incomplete pair)")
             continue
 
-        candidate = base_name + ".weight"
-        base_key = candidate if candidate in base_state else None
-
-        if base_key is None:
-            translated = diffusers_to_native(base_name)
-            if translated is not None:
-                # Try both the bare native name (split checkpoints) and the
-                # "model.diffusion_model." prefixed form used by all-in-one
-                # checkpoints that bundle the diffusion model + VAE + text
-                # encoder(s) into a single file.
-                for candidate_prefix in ("", "model.diffusion_model."):
-                    candidate2 = candidate_prefix + translated + ".weight"
-                    if candidate2 in base_state:
-                        base_key = candidate2
-                        break
-
-        if base_key is None:
-            norm = normalize_key(base_name)
-            base_key = base_lookup.get(norm)
-
+        base_key = _resolve_base_key(base_name, base_state, base_lookup)
         if base_key is None:
             unmatched.append(base_name)
             continue
 
-        down, up = parts["down"], parts["up"]
-        alpha_t = parts.get("alpha")
-        alpha = float(alpha_t.item()) if alpha_t is not None else None
-
         base_shape = base_state[base_key].shape
         expected_out, expected_in = base_shape[0], base_shape[1] if len(base_shape) > 1 else base_shape[0]
-        if up.shape[0] != expected_out or down.shape[1] != expected_in:
-            shape_mismatches.append(
-                f"{base_key}: base{tuple(base_shape)} vs lora up{tuple(up.shape)}/down{tuple(down.shape)}"
-            )
-            continue
 
-        matched_layers.append(LoraLayer(base_key=base_key, down=down, up=up, alpha=alpha))
+        if is_lokr:
+            w1, w2 = parts["lokr_w1"], parts["lokr_w2"]
+            kron_out = w1.shape[0] * w2.shape[0]
+            kron_in = (w1.shape[1] if w1.dim() > 1 else 1) * (w2.shape[1] if w2.dim() > 1 else 1)
+            if kron_out != expected_out or kron_in != expected_in:
+                shape_mismatches.append(
+                    f"{base_key}: base{tuple(base_shape)} vs lokr kron result ({kron_out}, {kron_in}) "
+                    f"[w1{tuple(w1.shape)} x w2{tuple(w2.shape)}]"
+                )
+                continue
+            matched_layers.append(LokrLayer(base_key=base_key, w1=w1, w2=w2))
+        else:
+            down, up = parts["down"], parts["up"]
+            alpha_t = parts.get("alpha")
+            alpha = float(alpha_t.item()) if alpha_t is not None else None
+
+            if up.shape[0] != expected_out or down.shape[1] != expected_in:
+                shape_mismatches.append(
+                    f"{base_key}: base{tuple(base_shape)} vs lora up{tuple(up.shape)}/down{tuple(down.shape)}"
+                )
+                continue
+
+            matched_layers.append(LoraLayer(base_key=base_key, down=down, up=up, alpha=alpha))
 
     return matched_layers, unmatched, shape_mismatches
 
@@ -310,22 +347,33 @@ def match_layers(
 # Merge
 # --------------------------------------------------------------------------- #
 
+def _compute_delta(layer: LoraLayer | LokrLayer, user_weight: float, compute_dtype: torch.dtype) -> torch.Tensor:
+    if isinstance(layer, LokrLayer):
+        # Confirmed empirically (check_lokr_scale.py): no alpha/rank division
+        # for this format -- the Kronecker product is already scaled as
+        # trained. Only the user-facing weight slider scales it further.
+        w1 = layer.w1.to(compute_dtype)
+        w2 = layer.w2.to(compute_dtype)
+        return torch.kron(w1, w2) * user_weight
+    else:
+        rank = layer.down.shape[0]
+        scale = (layer.alpha / rank) if layer.alpha is not None else 1.0
+        scale *= user_weight
+        down = layer.down.to(compute_dtype)
+        up = layer.up.to(compute_dtype)
+        return (up @ down) * scale
+
+
 def merge_layer_into_base(
     base_state: dict[str, torch.Tensor],
-    layer: LoraLayer,
+    layer: LoraLayer | LokrLayer,
     user_weight: float,
     compute_dtype: torch.dtype,
 ) -> None:
-    rank = layer.down.shape[0]
-    scale = (layer.alpha / rank) if layer.alpha is not None else 1.0
-    scale *= user_weight
-
-    down = layer.down.to(compute_dtype)
-    up = layer.up.to(compute_dtype)
     base_w = base_state[layer.base_key]
     orig_dtype = base_w.dtype
 
-    delta = (up @ down) * scale
+    delta = _compute_delta(layer, user_weight, compute_dtype)
 
     # fp8-scaled checkpoints (e.g. Krea 2's *_fp8_scaled.safetensors) store a
     # companion "<key>_scale" tensor alongside each quantized weight. Adding a
