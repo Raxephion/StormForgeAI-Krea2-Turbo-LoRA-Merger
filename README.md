@@ -3,7 +3,7 @@
 > ✅ **Confirmed working**, including split checkpoints, all-in-one
 > checkpoints (diffusion model + VAE + text encoder bundled), standard LoRA
 > adapters, and LyCORIS LoKr adapters (Kronecker-product format). All fixed
-> and verified against real files and real renders. If you hit issues on a
+> and verified against real files and real renders (Fp8). If you hit issues on a
 > different checkpoint/LoRA combination, please open an issue with a
 > `check_keys_full.py` dump of both files.
 
