@@ -15,6 +15,25 @@ works with any safetensors checkpoint using compatible LoRA naming).
 No internet access is required to run it — everything happens locally on
 your machine.
 
+## Supported checkpoint formats & quantization
+
+The merger automatically detects per-layer precision and quantization metadata in the base checkpoint — including mixed-precision checkpoints where transformer blocks are quantized while boundary/fusion layers remain in `bf16` or `fp16`:
+
+| Checkpoint format | Detection | Merge behavior |
+| --- | --- | --- |
+| **Standard float (`BF16` / `FP16` / `FP32`)** | Regular floating-point `.weight` tensors | Computes the LoRA/LoKr delta in the selected compute precision and casts back to the original tensor dtype. |
+| **Scaled `FP8` (`float8_e4m3fn` / `float8_e5m2`)** | FP8 `.weight` + companion `.weight_scale` | Dequantizes to `fp32`, adds the delta, recalculates `.weight_scale`, and requantizes back to the original FP8 dtype. |
+| **ComfyUI native `INT8` (`int8_tensorwise`)** | `int8` `.weight` + `.weight_scale` (`.comfy_quant` or `_quantization_metadata`) | Dequantizes to `fp32`, adds the delta, recalculates per-row (or tensorwise) `.weight_scale`, and requantizes to `int8`. |
+| **ComfyUI native `INT8 ConvRot`** | `int8` `.weight` + `.weight_scale` + `convrot: true` (`convrot_groupsize`: power of 4, e.g. `256`) | Dequantizes to `fp32`, rotates the LoRA/LoKr delta into ConvRot space using ComfyUI's normalized 4×4 regular-Hadamard Kronecker transform, merges, and requantizes to `int8` with updated `.weight_scale`. |
+
+### Notes on quantized checkpoints
+
+- **Verify before merging:** Run **Check compatibility (dry run)** first — the report lists the detected layer formats (for example, `int8_convrot (gs=256): 224, bfloat16: 40`) so you can confirm the checkpoint was recognized properly.
+- **Output precision:** Leave **Output precision** set to `keep original` for quantized checkpoints. Even if you choose `bf16` or `fp16`, quantized weights (`int8`, `fp8`), `.weight_scale` tensors, and `.comfy_quant` metadata tensors are preserved untouched so the saved file stays valid in ComfyUI.
+- **INT8 ConvRot math:** Because the ConvRot regular-Hadamard transform is linear and orthogonal ($R^2 = I$), rotating the LoRA/LoKr delta directly into ConvRot space and adding it to the dequantized rotated weights is mathematically equivalent to un-rotating, merging, and re-rotating, while avoiding extra round-trip error on the base weights.
+- **Unsupported formats:** Packed 4-bit/6-bit formats (such as `convrot_w4a4`, `asym_w4a8_int8`, or `w6a8_int8`) and legacy custom-node INT8 formats without `.weight_scale` are not supported for direct merging.
+
+
 ## Requirements
 
 - Windows, with Python 3.10 or 3.11 installed and on PATH
