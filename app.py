@@ -4,7 +4,8 @@ Krea 2 Turbo LoRA Merger
 Standalone, offline Gradio app that permanently merges one or more LoRA
 files into a base diffusion model checkpoint (designed for Krea 2 Turbo,
 but works on any safetensors DiT/UNet checkpoint with compatible LoRA
-naming conventions).
+naming conventions, including BF16/FP16, scaled FP8, and ComfyUI native
+INT8 / INT8-ConvRot checkpoints).
 
 Run with:  python app.py
 """
@@ -40,85 +41,20 @@ except Exception:
     _GRADIO_MAJOR = 0  # unknown -> assume older (pre-6.0) API as the safer default
 
 CYBERPUNK_CSS = """
-/* --- CYBERPUNK HUD STYLES --- */
-:root {
-    --neon-blue: #00ffff;
-    --neon-glow: 0 0 8px #00ffff, 0 0 16px #00ffff;
-    --bg-black: #000000;
-}
-/* GLOBAL BACKGROUND */
-body, .gradio-container {
-    background: var(--bg-black) !important;
-    color: var(--neon-blue) !important;
-    font-family: 'Share Tech Mono', monospace !important;
-}
-/* MAIN TITLE */
-#main_title {
-    color: var(--neon-blue) !important;
-    text-shadow: var(--neon-glow);
-    text-align: center;
-    font-size: 3em !important;
-    border-bottom: 1px solid var(--neon-blue);
-    padding-bottom: 8px;
-}
-/* TEXTBOXES */
-textarea, input[type="text"], .gr-textbox, .gr-input {
-    background: var(--bg-black) !important;
-    border: 1px solid var(--neon-blue) !important;
-    color: var(--neon-blue) !important;
-    text-shadow: var(--neon-glow);
-    font-family: 'Share Tech Mono', monospace !important;
-    border-radius: 0 !important;
-    box-shadow: inset 0 0 12px #003333;
-}
-/* OUTPUT + INPUT TEXTAREAS */
-#danika_output textarea, #user_input textarea {
-    background: var(--bg-black) !important;
-    color: var(--neon-blue) !important;
-    border: 1px solid var(--neon-blue) !important;
-    text-shadow: var(--neon-glow);
-    font-size: 15px !important;
-    box-shadow: inset 0 0 20px #002222;
-}
-/* BUTTONS */
-button, .gr-button {
-    background: var(--bg-black) !important;
-    border: 1px solid var(--neon-blue) !important;
-    color: var(--neon-blue) !important;
-    text-shadow: var(--neon-glow);
-    border-radius: 0 !important;
-    transition: all 0.2s ease-in-out;
-}
-button:hover, .gr-button:hover {
-    background: var(--neon-blue) !important;
-    color: var(--bg-black) !important;
-    text-shadow: none !important;
-    box-shadow: 0 0 20px #00ffff;
-}
-/* ACCORDIONS & BOXES */
-.gr-accordion, .gr-box {
-    background: var(--bg-black) !important;
-    border: 1px solid var(--neon-blue) !important;
-    color: var(--neon-blue) !important;
-    text-shadow: var(--neon-glow);
-    border-radius: 0 !important;
-}
-/* SLIDERS */
-input[type=range]::-webkit-slider-thumb {
-    background: var(--neon-blue) !important;
-    box-shadow: var(--neon-glow);
-}
-input[type=range]::-webkit-slider-runnable-track {
-    background: #003333 !important;
-    border: 1px solid var(--neon-blue);
-}
-/* LABELS */
-h3, label, .gr-checkbox label span {
-    color: var(--neon-blue) !important;
-    text-shadow: var(--neon-glow);
-    font-weight: 600;
-    text-transform: uppercase;
-}
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&display=swap');
+:root { --neon-blue: #00ffff; --neon-glow: 0 0 8px #00ffff, 0 0 16px #00ffff; --bg-black: #000000; }
+body, .gradio-container { background: var(--bg-black) !important; color: var(--neon-blue) !important; font-family: 'Orbitron', sans-serif !important; }
+#main_title { color: var(--neon-blue) !important; text-shadow: var(--neon-glow); text-align: center; font-size: 3em !important; border-bottom: 1px solid var(--neon-blue); padding-bottom: 8px; }
+textarea, input[type="text"], input[type="number"], .gr-textbox, .gr-input, .gradio-dropdown { background: var(--bg-black) !important; border: 1px solid var(--neon-blue) !important; color: var(--neon-blue) !important; text-shadow: var(--neon-glow); font-family: 'Orbitron', sans-serif !important; border-radius: 0 !important; box-shadow: inset 0 0 12px #003333; }
+.gradio-gallery, .gradio-image { border: 1px solid var(--neon-blue) !important; border-radius: 0 !important; background: #001111 !important; }
+button, .gr-button { background: var(--bg-black) !important; border: 1px solid var(--neon-blue) !important; color: var(--neon-blue) !important; text-shadow: var(--neon-glow); border-radius: 0 !important; transition: all 0.2s ease-in-out; }
+button:hover, .gr-button:hover { background: var(--neon-blue) !important; color: var(--bg-black) !important; text-shadow: none !important; box-shadow: 0 0 20px #00ffff; }
+.gr-accordion, .gr-box, .gradio-tabs > .tab-nav > button { background: var(--bg-black) !important; border: 1px solid var(--neon-blue) !important; color: var(--neon-blue) !important; border-radius: 0 !important; }
+.gradio-tabs > .tab-nav > button.selected { background: var(--neon-blue) !important; color: var(--bg-black) !important; text-shadow: none !important; }
+input[type=range] { -webkit-appearance: none; background: transparent; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 0; background: var(--neon-blue); cursor: pointer; margin-top: -7px; box-shadow: var(--neon-glow); }
+input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 2px; cursor: pointer; background: var(--neon-blue) !important; border: 1px solid var(--neon-blue); }
+h3, label, .gr-checkbox label span { color: var(--neon-blue) !important; text-shadow: var(--neon-glow); font-weight: 600; text-transform: uppercase; }
 """
 
 BLOCKS_CSS_KWARGS = {"css": CYBERPUNK_CSS} if _GRADIO_MAJOR < 6 else {}
@@ -128,6 +64,12 @@ LAUNCH_CSS_KWARGS = {"css": CYBERPUNK_CSS} if _GRADIO_MAJOR >= 6 else {}
 # --------------------------------------------------------------------------- #
 # UI callbacks
 # --------------------------------------------------------------------------- #
+
+def _format_quant_modes(quant_modes: dict[str, int]) -> str:
+    if not quant_modes:
+        return "none"
+    return ", ".join(f"{mode}: {count}" for mode, count in sorted(quant_modes.items()))
+
 
 def on_lora_files_change(files):
     """Show one slider/label pair per uploaded LoRA file, hide the rest."""
@@ -159,6 +101,8 @@ def on_check_compatibility(base_file, lora_files):
             lines.append(f"  matched:          {len(report.matched)}/{total}")
             lines.append(f"  unmatched:        {len(report.unmatched)}")
             lines.append(f"  shape mismatches: {len(report.shape_mismatches)}")
+            if report.quant_modes:
+                lines.append(f"  layer formats:    {_format_quant_modes(report.quant_modes)}")
             if report.unmatched:
                 sample = report.unmatched[:5]
                 lines.append(f"  unmatched sample: {sample}")
@@ -221,7 +165,13 @@ def on_merge(
         progress((idx + 1) / (n + 1), desc=f"Merging {os.path.basename(lora_path)}")
         log_lines.append(f"\nMerging {os.path.basename(lora_path)} at weight {w}...")
         try:
-            report = merge_lora_file(base_state, lora_path, weight=w, compute_dtype=compute_dtype)
+            report = merge_lora_file(
+                base_state,
+                lora_path,
+                weight=w,
+                compute_dtype=compute_dtype,
+                base_metadata=base_metadata,
+            )
         except Exception as e:
             return (
                 "\n".join(log_lines) + "\n❌ Error during merge:\n" + "".join(traceback.format_exception(e)),
@@ -234,6 +184,8 @@ def on_merge(
             f"  matched {len(report.matched)}, unmatched {len(report.unmatched)}, "
             f"shape mismatches {len(report.shape_mismatches)}"
         )
+        if report.quant_modes:
+            log_lines.append(f"  merge modes: {_format_quant_modes(report.quant_modes)}")
 
     os.makedirs(output_dir, exist_ok=True)
     name = output_name.strip() or f"krea2_turbo_merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -260,9 +212,9 @@ def on_merge(
 # UI layout
 # --------------------------------------------------------------------------- #
 
-with gr.Blocks(title="Krea 2 Turbo LoRA Merger", **BLOCKS_CSS_KWARGS) as demo:
+with gr.Blocks(title="StormForgeAI Krea 2 Turbo LoRA Merger", **BLOCKS_CSS_KWARGS) as demo:
     gr.Markdown(
-        "# Krea 2 Turbo LoRA Merger\n"
+        "# StormForgeAI Krea 2 Turbo LoRA Merger\n"
         "Permanently bake one or more LoRAs into a base checkpoint. "
         "Fully offline — nothing here calls the internet.",
         elem_id="main_title",
